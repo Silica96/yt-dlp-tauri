@@ -2,6 +2,7 @@ use crate::ytdlp::manager::YtDlpManager;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -353,22 +354,76 @@ impl Downloader {
         let mut stdout_lines = stdout_reader.lines();
         let mut stderr_lines = stderr_reader.lines();
 
-        // stderr를 별도 태스크에서 수집
-        let stderr_handle = tokio::spawn(async move {
-            let mut error_messages = Vec::new();
-            while let Ok(Some(line)) = stderr_lines.next_line().await {
-                error_messages.push(line);
-            }
-            error_messages
-        });
+        // Arc로 콜백을 감싸서 여러 태스크에서 공유
+        let on_progress = Arc::new(on_progress);
+        let on_progress_stderr = Arc::clone(&on_progress);
 
         let progress_regex = Regex::new(
             r"\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*([\d.]+\w+)(?:\s+at\s+([\d.]+\w+/s))?(?:\s+ETA\s+(\S+))?",
         )
         .unwrap();
+        let progress_regex_stderr = progress_regex.clone();
 
+        // stderr에서 진행 상태 파싱 (yt-dlp는 진행 상태를 stderr로 출력)
+        let stderr_handle = tokio::spawn(async move {
+            let mut error_messages = Vec::new();
+            while let Ok(Some(line)) = stderr_lines.next_line().await {
+                // 진행 상태 파싱
+                if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
+                    on_progress_stderr(DownloadProgress {
+                        status: "extracting".to_string(),
+                        percentage: Some(0.0),
+                        speed: None,
+                        eta: None,
+                        filename: None,
+                        total_bytes: None,
+                        downloaded_bytes: None,
+                    });
+                } else if let Some(caps) = progress_regex_stderr.captures(&line) {
+                    let percentage = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
+                    let speed = caps.get(3).map(|m| m.as_str().to_string());
+                    let eta = caps.get(4).map(|m| m.as_str().to_string());
+
+                    on_progress_stderr(DownloadProgress {
+                        status: "downloading".to_string(),
+                        percentage,
+                        speed,
+                        eta,
+                        filename: None,
+                        total_bytes: None,
+                        downloaded_bytes: None,
+                    });
+                } else if line.contains("[download] Destination:") {
+                    let filename = line.replace("[download] Destination:", "").trim().to_string();
+                    on_progress_stderr(DownloadProgress {
+                        status: "starting".to_string(),
+                        percentage: Some(0.0),
+                        speed: None,
+                        eta: None,
+                        filename: Some(filename),
+                        total_bytes: None,
+                        downloaded_bytes: None,
+                    });
+                } else if line.contains("[Merger]") || line.contains("[ExtractAudio]") {
+                    on_progress_stderr(DownloadProgress {
+                        status: "processing".to_string(),
+                        percentage: Some(100.0),
+                        speed: None,
+                        eta: None,
+                        filename: None,
+                        total_bytes: None,
+                        downloaded_bytes: None,
+                    });
+                } else if line.starts_with("ERROR") || line.contains("error:") {
+                    // 에러 메시지만 수집
+                    error_messages.push(line);
+                }
+            }
+            error_messages
+        });
+
+        // stdout도 읽기 (일부 메시지가 stdout으로 출력될 수 있음)
         while let Ok(Some(line)) = stdout_lines.next_line().await {
-            // Detect video info extraction phase
             if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
                 on_progress(DownloadProgress {
                     status: "extracting".to_string(),
@@ -379,9 +434,7 @@ impl Downloader {
                     total_bytes: None,
                     downloaded_bytes: None,
                 });
-                continue;
-            }
-            if let Some(caps) = progress_regex.captures(&line) {
+            } else if let Some(caps) = progress_regex.captures(&line) {
                 let percentage = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
                 let speed = caps.get(3).map(|m| m.as_str().to_string());
                 let eta = caps.get(4).map(|m| m.as_str().to_string());
