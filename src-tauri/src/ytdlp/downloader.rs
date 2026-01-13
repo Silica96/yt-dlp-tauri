@@ -346,15 +346,28 @@ impl Downloader {
         let mut child = cmd.spawn()?;
 
         let stdout = child.stdout.take().unwrap();
-        let reader = BufReader::new(stdout);
-        let mut lines = reader.lines();
+        let stderr = child.stderr.take().unwrap();
+
+        let stdout_reader = BufReader::new(stdout);
+        let stderr_reader = BufReader::new(stderr);
+        let mut stdout_lines = stdout_reader.lines();
+        let mut stderr_lines = stderr_reader.lines();
+
+        // stderr를 별도 태스크에서 수집
+        let stderr_handle = tokio::spawn(async move {
+            let mut error_messages = Vec::new();
+            while let Ok(Some(line)) = stderr_lines.next_line().await {
+                error_messages.push(line);
+            }
+            error_messages
+        });
 
         let progress_regex = Regex::new(
             r"\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*([\d.]+\w+)(?:\s+at\s+([\d.]+\w+/s))?(?:\s+ETA\s+(\S+))?",
         )
         .unwrap();
 
-        while let Ok(Some(line)) = lines.next_line().await {
+        while let Ok(Some(line)) = stdout_lines.next_line().await {
             // Detect video info extraction phase
             if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
                 on_progress(DownloadProgress {
@@ -407,6 +420,7 @@ impl Downloader {
         }
 
         let status = child.wait().await?;
+        let stderr_output = stderr_handle.await.unwrap_or_default();
 
         if status.success() {
             on_progress(DownloadProgress {
@@ -420,9 +434,12 @@ impl Downloader {
             });
             Ok(options.output_dir.clone())
         } else {
-            Err(DownloaderError::DownloadFailed(
-                "Download process failed".to_string(),
-            ))
+            let error_msg = if stderr_output.is_empty() {
+                format!("Download process failed with exit code: {:?}", status.code())
+            } else {
+                stderr_output.join("\n")
+            };
+            Err(DownloaderError::DownloadFailed(error_msg))
         }
     }
 
