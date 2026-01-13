@@ -1,6 +1,6 @@
 [package]
 name = "yt-dlp-gui"
-version = "0.1.1"
+version = "0.1.2"
 description = "A user-friendly video downloader using yt-dlp"
 authors = ["gyuseok"]
 edition = "2021"
