@@ -3,6 +3,12 @@ use std::path::PathBuf;
 use std::process::Command;
 use thiserror::Error;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Error, Debug)]
 pub enum ManagerError {
     #[error("Failed to get app data directory")]
@@ -72,9 +78,13 @@ impl YtDlpManager {
             return Err(ManagerError::BinaryNotFound);
         }
 
-        let output = Command::new(self.get_ytdlp_path())
-            .arg("--version")
-            .output()?;
+        let mut cmd = Command::new(self.get_ytdlp_path());
+        cmd.arg("--version");
+
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let output = cmd.output()?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
