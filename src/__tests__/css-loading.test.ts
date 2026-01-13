@@ -1,26 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
-import { createPinia, setActivePinia } from 'pinia';
+import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-// Tauri API 모킹
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue({
-    yt_dlp_installed: true,
-    yt_dlp_version: '2024.01.01',
-    ffmpeg_installed: true,
-  }),
-}));
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  open: vi.fn(),
-}));
-
 describe('CSS 로딩 테스트', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia());
-  });
 
   it('style.css 파일이 존재해야 함', () => {
     const stylePath = resolve(__dirname, '../style.css');
