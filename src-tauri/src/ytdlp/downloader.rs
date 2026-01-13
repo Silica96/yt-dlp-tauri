@@ -6,6 +6,12 @@ use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Error, Debug)]
 pub enum DownloaderError {
     #[error("yt-dlp binary not found. Please install yt-dlp first.")]
@@ -128,16 +134,19 @@ impl Downloader {
             return Err(DownloaderError::BinaryNotFound);
         }
 
-        let output = Command::new(self.manager.get_ytdlp_path())
-            .args([
-                "--dump-json",
-                "--flat-playlist",
-                "--no-warnings",
-                "--no-download",
-                url,
-            ])
-            .output()
-            .await?;
+        let mut cmd = Command::new(self.manager.get_ytdlp_path());
+        cmd.args([
+            "--dump-json",
+            "--flat-playlist",
+            "--no-warnings",
+            "--no-download",
+            url,
+        ]);
+
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let output = cmd.output().await?;
 
         if !output.status.success() {
             return Err(DownloaderError::ExecutionError(
@@ -260,6 +269,7 @@ impl Downloader {
         let mut args = vec![
             "--progress".to_string(),
             "--newline".to_string(),
+            "--force-progress".to_string(), // Windows에서 비터미널 환경에서도 진행 상태 출력
             "-o".to_string(),
             output_template,
         ];
@@ -325,11 +335,15 @@ impl Downloader {
             downloaded_bytes: None,
         });
 
-        let mut child = Command::new(self.manager.get_ytdlp_path())
-            .args(&args)
+        let mut cmd = Command::new(self.manager.get_ytdlp_path());
+        cmd.args(&args)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let mut child = cmd.spawn()?;
 
         let stdout = child.stdout.take().unwrap();
         let reader = BufReader::new(stdout);
