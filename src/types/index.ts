@@ -59,7 +59,7 @@ export interface DownloadItem {
   id: string;
   url: string;
   title: string;
-  status: 'pending' | 'downloading' | 'processing' | 'completed' | 'error';
+  status: 'pending' | 'starting' | 'extracting' | 'downloading' | 'processing' | 'completed' | 'error';
   progress: number;
   speed: string | null;
   eta: string | null;

@@ -14,7 +14,7 @@ export const useDownloadStore = defineStore('download', () => {
   let progressUnlisten: UnlistenFn | null = null;
 
   const activeDownloads = computed(() =>
-    downloads.value.filter(d => d.status === 'downloading' || d.status === 'processing')
+    downloads.value.filter(d => ['starting', 'extracting', 'downloading', 'processing'].includes(d.status))
   );
 
   const completedDownloads = computed(() =>

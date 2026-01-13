@@ -9,6 +9,8 @@ const hasDownloads = computed(() => downloadStore.downloads.length > 0);
 function getStatusText(status: string): string {
   switch (status) {
     case 'pending': return '대기 중';
+    case 'starting': return '시작 중';
+    case 'extracting': return '정보 추출 중';
     case 'downloading': return '다운로드 중';
     case 'processing': return '변환 중';
     case 'completed': return '완료';
@@ -20,12 +22,25 @@ function getStatusText(status: string): string {
 function getStatusColor(status: string): string {
   switch (status) {
     case 'pending': return 'text-gray-500';
+    case 'starting': return 'text-blue-400';
+    case 'extracting': return 'text-blue-400';
     case 'downloading': return 'text-blue-500';
     case 'processing': return 'text-yellow-500';
     case 'completed': return 'text-green-500';
     case 'error': return 'text-red-500';
     default: return 'text-gray-500';
   }
+}
+
+function isActiveStatus(status: string): boolean {
+  return ['starting', 'extracting', 'downloading', 'processing'].includes(status);
+}
+
+function getDisplayTitle(title: string, status: string): string {
+  if (title === 'Unknown' && (status === 'starting' || status === 'extracting')) {
+    return '영상 정보를 가져오는 중...';
+  }
+  return title;
 }
 </script>
 
@@ -51,9 +66,9 @@ function getStatusColor(status: string): string {
         <div class="flex items-start gap-3">
           <!-- Status Icon -->
           <div class="mt-1">
-            <!-- Downloading spinner -->
+            <!-- Active spinner -->
             <div
-              v-if="download.status === 'downloading' || download.status === 'processing'"
+              v-if="isActiveStatus(download.status)"
               class="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"
             ></div>
             <!-- Completed check -->
@@ -92,7 +107,7 @@ function getStatusColor(status: string): string {
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between mb-1">
               <h3 class="font-medium text-gray-800 truncate pr-4">
-                {{ download.title }}
+                {{ getDisplayTitle(download.title, download.status) }}
               </h3>
               <button
                 @click="downloadStore.removeDownload(download.id)"
@@ -104,9 +119,9 @@ function getStatusColor(status: string): string {
               </button>
             </div>
 
-            <!-- Progress bar for downloading/processing -->
+            <!-- Progress bar for active downloads -->
             <div
-              v-if="download.status === 'downloading' || download.status === 'processing'"
+              v-if="isActiveStatus(download.status)"
               class="mb-2"
             >
               <div class="progress-bar h-2">

@@ -83,6 +83,7 @@ pub struct DownloadProgress {
     pub downloaded_bytes: Option<u64>,
 }
 
+#[derive(Clone)]
 pub struct Downloader {
     manager: YtDlpManager,
 }
@@ -254,6 +255,17 @@ impl Downloader {
 
         args.push(options.url.clone());
 
+        // Emit starting status immediately
+        on_progress(DownloadProgress {
+            status: "starting".to_string(),
+            percentage: Some(0.0),
+            speed: None,
+            eta: None,
+            filename: None,
+            total_bytes: None,
+            downloaded_bytes: None,
+        });
+
         let mut child = Command::new(self.manager.get_ytdlp_path())
             .args(&args)
             .stdout(Stdio::piped())
@@ -270,6 +282,19 @@ impl Downloader {
         .unwrap();
 
         while let Ok(Some(line)) = lines.next_line().await {
+            // Detect video info extraction phase
+            if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
+                on_progress(DownloadProgress {
+                    status: "extracting".to_string(),
+                    percentage: Some(0.0),
+                    speed: None,
+                    eta: None,
+                    filename: None,
+                    total_bytes: None,
+                    downloaded_bytes: None,
+                });
+                continue;
+            }
             if let Some(caps) = progress_regex.captures(&line) {
                 let percentage = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
                 let speed = caps.get(3).map(|m| m.as_str().to_string());

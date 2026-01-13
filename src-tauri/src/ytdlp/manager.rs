@@ -15,6 +15,7 @@ pub enum ManagerError {
     IoError(#[from] std::io::Error),
 }
 
+#[derive(Clone)]
 pub struct YtDlpManager {
     bin_dir: PathBuf,
 }
