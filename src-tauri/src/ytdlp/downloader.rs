@@ -268,9 +268,11 @@ impl Downloader {
             .to_string();
 
         let mut args = vec![
-            "--progress".to_string(),
             "--newline".to_string(),
-            "--no-quiet".to_string(), // 진행 상태 출력 보장
+            "--no-quiet".to_string(),
+            // 진행 상태를 파싱하기 쉬운 형식으로 출력
+            "--progress-template".to_string(),
+            "download:[PROGRESS] %(progress._percent_str)s %(progress._speed_str)s %(progress._eta_str)s".to_string(),
             "-o".to_string(),
             output_template,
         ];
@@ -358,37 +360,58 @@ impl Downloader {
         let on_progress = Arc::new(on_progress);
         let on_progress_stderr = Arc::clone(&on_progress);
 
+        // [PROGRESS] 10.5% 5.00MiB/s 00:10 형식 파싱
         let progress_regex = Regex::new(
-            r"\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*([\d.]+\w+)(?:\s+at\s+([\d.]+\w+/s))?(?:\s+ETA\s+(\S+))?",
+            r"\[PROGRESS\]\s+([\d.]+)%(?:\s+(\S+))?(?:\s+(\S+))?",
         )
         .unwrap();
         let progress_regex_stderr = progress_regex.clone();
+
+        // 기존 [download] 형식도 지원 (fallback)
+        let download_regex = Regex::new(
+            r"\[download\]\s+(\d+\.?\d*)%",
+        )
+        .unwrap();
+        let download_regex_stderr = download_regex.clone();
 
         // stderr에서 진행 상태 파싱 (yt-dlp는 진행 상태를 stderr로 출력)
         let stderr_handle = tokio::spawn(async move {
             let mut error_messages = Vec::new();
             while let Ok(Some(line)) = stderr_lines.next_line().await {
-                // 진행 상태 파싱
-                if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
-                    on_progress_stderr(DownloadProgress {
-                        status: "extracting".to_string(),
-                        percentage: Some(0.0),
-                        speed: None,
-                        eta: None,
-                        filename: None,
-                        total_bytes: None,
-                        downloaded_bytes: None,
-                    });
-                } else if let Some(caps) = progress_regex_stderr.captures(&line) {
+                // [PROGRESS] 형식 파싱
+                if let Some(caps) = progress_regex_stderr.captures(&line) {
                     let percentage = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
-                    let speed = caps.get(3).map(|m| m.as_str().to_string());
-                    let eta = caps.get(4).map(|m| m.as_str().to_string());
+                    let speed = caps.get(2).map(|m| m.as_str().to_string());
+                    let eta = caps.get(3).map(|m| m.as_str().to_string());
 
                     on_progress_stderr(DownloadProgress {
                         status: "downloading".to_string(),
                         percentage,
                         speed,
                         eta,
+                        filename: None,
+                        total_bytes: None,
+                        downloaded_bytes: None,
+                    });
+                // 기존 [download] 형식 fallback
+                } else if let Some(caps) = download_regex_stderr.captures(&line) {
+                    let percentage = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
+
+                    on_progress_stderr(DownloadProgress {
+                        status: "downloading".to_string(),
+                        percentage,
+                        speed: None,
+                        eta: None,
+                        filename: None,
+                        total_bytes: None,
+                        downloaded_bytes: None,
+                    });
+                } else if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
+                    on_progress_stderr(DownloadProgress {
+                        status: "extracting".to_string(),
+                        percentage: Some(0.0),
+                        speed: None,
+                        eta: None,
                         filename: None,
                         total_bytes: None,
                         downloaded_bytes: None,
@@ -415,7 +438,6 @@ impl Downloader {
                         downloaded_bytes: None,
                     });
                 } else if line.starts_with("ERROR") || line.contains("error:") {
-                    // 에러 메시지만 수집
                     error_messages.push(line);
                 }
             }
@@ -424,26 +446,40 @@ impl Downloader {
 
         // stdout도 읽기 (일부 메시지가 stdout으로 출력될 수 있음)
         while let Ok(Some(line)) = stdout_lines.next_line().await {
-            if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
-                on_progress(DownloadProgress {
-                    status: "extracting".to_string(),
-                    percentage: Some(0.0),
-                    speed: None,
-                    eta: None,
-                    filename: None,
-                    total_bytes: None,
-                    downloaded_bytes: None,
-                });
-            } else if let Some(caps) = progress_regex.captures(&line) {
+            // [PROGRESS] 형식 파싱
+            if let Some(caps) = progress_regex.captures(&line) {
                 let percentage = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
-                let speed = caps.get(3).map(|m| m.as_str().to_string());
-                let eta = caps.get(4).map(|m| m.as_str().to_string());
+                let speed = caps.get(2).map(|m| m.as_str().to_string());
+                let eta = caps.get(3).map(|m| m.as_str().to_string());
 
                 on_progress(DownloadProgress {
                     status: "downloading".to_string(),
                     percentage,
                     speed,
                     eta,
+                    filename: None,
+                    total_bytes: None,
+                    downloaded_bytes: None,
+                });
+            // 기존 [download] 형식 fallback
+            } else if let Some(caps) = download_regex.captures(&line) {
+                let percentage = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
+
+                on_progress(DownloadProgress {
+                    status: "downloading".to_string(),
+                    percentage,
+                    speed: None,
+                    eta: None,
+                    filename: None,
+                    total_bytes: None,
+                    downloaded_bytes: None,
+                });
+            } else if line.starts_with("[youtube]") || line.starts_with("[info]") || line.contains("Extracting") {
+                on_progress(DownloadProgress {
+                    status: "extracting".to_string(),
+                    percentage: Some(0.0),
+                    speed: None,
+                    eta: None,
                     filename: None,
                     total_bytes: None,
                     downloaded_bytes: None,
