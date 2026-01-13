@@ -1,3 +1,10 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+
 # Logs
 logs
 *.log
@@ -7,18 +14,41 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Local env files
 *.local
+.env
+.env.*
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas
+
+# Rust
+*.rs.bk
+Cargo.lock
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+*.tmp
+*.temp
+.cache
