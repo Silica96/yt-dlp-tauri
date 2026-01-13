@@ -269,7 +269,7 @@ impl Downloader {
         let mut args = vec![
             "--progress".to_string(),
             "--newline".to_string(),
-            "--force-progress".to_string(), // Windows에서 비터미널 환경에서도 진행 상태 출력
+            "--no-quiet".to_string(), // 진행 상태 출력 보장
             "-o".to_string(),
             output_template,
         ];
