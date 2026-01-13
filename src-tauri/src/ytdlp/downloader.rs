@@ -249,7 +249,7 @@ impl Downloader {
         on_progress: F,
     ) -> Result<String, DownloaderError>
     where
-        F: Fn(DownloadProgress) + Send + 'static,
+        F: Fn(DownloadProgress) + Send + Sync + 'static,
     {
         if !self.manager.is_ytdlp_installed() {
             return Err(DownloaderError::BinaryNotFound);
