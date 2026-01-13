@@ -23,30 +23,58 @@ pub enum DownloaderError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DownloadFormat {
-    BestVideo,
-    Video720p,
-    Video480p,
-    AudioOnly,
+pub enum VideoQuality {
+    Best,
+    #[serde(rename = "720p")]
+    P720,
+    #[serde(rename = "480p")]
+    P480,
 }
 
-impl DownloadFormat {
+impl VideoQuality {
     pub fn to_format_string(&self) -> &'static str {
         match self {
-            DownloadFormat::BestVideo => "bv*+ba/b",
-            DownloadFormat::Video720p => "bv*[height<=720]+ba/b",
-            DownloadFormat::Video480p => "bv*[height<=480]+ba/b",
-            DownloadFormat::AudioOnly => "ba/b",
+            VideoQuality::Best => "bv*+ba/b",
+            VideoQuality::P720 => "bv*[height<=720]+ba/b",
+            VideoQuality::P480 => "bv*[height<=480]+ba/b",
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VideoContainer {
+    Mp4,
+    Mkv,
+    Webm,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioFormat {
+    Mp3,
+    M4a,
+    Aac,
+    Flac,
+    Wav,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DownloadMode {
+    Video {
+        quality: VideoQuality,
+        container: VideoContainer,
+    },
+    Audio {
+        format: AudioFormat,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadOptions {
     pub url: String,
     pub output_dir: String,
-    pub format: DownloadFormat,
-    pub extract_audio: bool,
+    pub mode: DownloadMode,
     pub embed_subs: bool,
     pub playlist_items: Option<Vec<usize>>,
 }
@@ -232,16 +260,35 @@ impl Downloader {
         let mut args = vec![
             "--progress".to_string(),
             "--newline".to_string(),
-            "-f".to_string(),
-            options.format.to_format_string().to_string(),
             "-o".to_string(),
             output_template,
         ];
 
-        if options.extract_audio {
-            args.push("-x".to_string());
-            args.push("--audio-format".to_string());
-            args.push("mp3".to_string());
+        // DownloadMode에 따라 인자 추가
+        match &options.mode {
+            DownloadMode::Video { quality, container } => {
+                args.push("-f".to_string());
+                args.push(quality.to_format_string().to_string());
+
+                // 컨테이너 포맷 지정
+                args.push("--merge-output-format".to_string());
+                args.push(match container {
+                    VideoContainer::Mp4 => "mp4",
+                    VideoContainer::Mkv => "mkv",
+                    VideoContainer::Webm => "webm",
+                }.to_string());
+            }
+            DownloadMode::Audio { format } => {
+                args.push("-x".to_string());
+                args.push("--audio-format".to_string());
+                args.push(match format {
+                    AudioFormat::Mp3 => "mp3",
+                    AudioFormat::M4a => "m4a",
+                    AudioFormat::Aac => "aac",
+                    AudioFormat::Flac => "flac",
+                    AudioFormat::Wav => "wav",
+                }.to_string());
+            }
         }
 
         if options.embed_subs {

@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use ytdlp::downloader::{DownloadFormat, DownloadOptions, Downloader, VideoInfo};
+use ytdlp::downloader::{AudioFormat, DownloadMode, DownloadOptions, Downloader, VideoContainer, VideoInfo, VideoQuality};
 use ytdlp::manager::YtDlpManager;
 use ytdlp::updater::{UpdateStatus, Updater};
 
@@ -156,8 +156,12 @@ async fn get_video_info(url: String, state: State<'_, AppState>) -> Result<Video
 pub struct StartDownloadRequest {
     pub url: String,
     pub output_dir: String,
-    pub format: String,
-    pub extract_audio: bool,
+    // 비디오 옵션
+    pub video_quality: Option<String>,
+    pub video_container: Option<String>,
+    // 오디오 옵션
+    pub audio_format: Option<String>,
+    // 기존
     pub embed_subs: bool,
     pub playlist_items: Option<Vec<usize>>,
 }
@@ -174,19 +178,36 @@ async fn start_download(
         .ok_or("Downloader not initialized. Please install yt-dlp first.")?
         .clone();
 
-    let format = match request.format.as_str() {
-        "best" => DownloadFormat::BestVideo,
-        "720p" => DownloadFormat::Video720p,
-        "480p" => DownloadFormat::Video480p,
-        "audio" => DownloadFormat::AudioOnly,
-        _ => DownloadFormat::BestVideo,
+    let mode = if let Some(audio_fmt) = request.audio_format {
+        // 오디오 모드
+        let format = match audio_fmt.as_str() {
+            "mp3" => AudioFormat::Mp3,
+            "m4a" => AudioFormat::M4a,
+            "aac" => AudioFormat::Aac,
+            "flac" => AudioFormat::Flac,
+            "wav" => AudioFormat::Wav,
+            _ => AudioFormat::Mp3, // 기본값
+        };
+        DownloadMode::Audio { format }
+    } else {
+        // 비디오 모드
+        let quality = match request.video_quality.as_deref() {
+            Some("720p") => VideoQuality::P720,
+            Some("480p") => VideoQuality::P480,
+            _ => VideoQuality::Best, // 기본값
+        };
+        let container = match request.video_container.as_deref() {
+            Some("mkv") => VideoContainer::Mkv,
+            Some("webm") => VideoContainer::Webm,
+            _ => VideoContainer::Mp4, // 기본값
+        };
+        DownloadMode::Video { quality, container }
     };
 
     let options = DownloadOptions {
         url: request.url,
         output_dir: request.output_dir,
-        format,
-        extract_audio: request.extract_audio,
+        mode,
         embed_subs: request.embed_subs,
         playlist_items: request.playlist_items,
     };

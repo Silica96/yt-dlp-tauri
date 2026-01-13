@@ -3,12 +3,16 @@ import { ref, watch } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../stores/app';
 import { useDownloadStore } from '../stores/download';
+import type { VideoQuality, VideoContainer, AudioFormat } from '../types';
 
 const appStore = useAppStore();
 const downloadStore = useDownloadStore();
 
 const url = ref('');
 const downloadFormat = ref<'video' | 'audio'>('video');
+const videoQuality = ref<VideoQuality>('best');
+const videoContainer = ref<VideoContainer>('mp4');
+const audioFormat = ref<AudioFormat>('mp3');
 const isDownloading = ref(false);
 
 // Initialize download directory
@@ -41,14 +45,24 @@ async function handleDownload() {
   try {
     const title = downloadStore.currentVideoInfo?.title ?? 'Unknown';
 
-    await downloadStore.startDownload({
-      url: url.value.trim(),
-      output_dir: downloadStore.downloadDir,
-      format: downloadFormat.value === 'audio' ? 'audio' : 'best',
-      extract_audio: downloadFormat.value === 'audio',
-      embed_subs: false,
-      playlist_items: null,
-    }, title);
+    const request = downloadFormat.value === 'video'
+      ? {
+          url: url.value.trim(),
+          output_dir: downloadStore.downloadDir,
+          video_quality: videoQuality.value,
+          video_container: videoContainer.value,
+          embed_subs: false,
+          playlist_items: null,
+        }
+      : {
+          url: url.value.trim(),
+          output_dir: downloadStore.downloadDir,
+          audio_format: audioFormat.value,
+          embed_subs: false,
+          playlist_items: null,
+        };
+
+    await downloadStore.startDownload(request, title);
 
     // Clear form after successful start
     url.value = '';
@@ -161,7 +175,154 @@ function handlePaste() {
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
           </svg>
-          <span class="text-lg">음악 (MP3)</span>
+          <span class="text-lg">음악</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Video Options -->
+    <div v-if="downloadFormat === 'video'" class="mb-4 space-y-3">
+      <!-- Quality Selection -->
+      <div>
+        <label class="block text-gray-700 mb-2 text-sm">화질</label>
+        <div class="flex gap-2">
+          <button
+            @click="videoQuality = 'best'"
+            :class="[
+              'flex-1 py-2 px-3 rounded-lg border-2 transition-all text-sm',
+              videoQuality === 'best'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                : 'border-gray-200 hover:border-gray-300 text-gray-600'
+            ]"
+          >
+            최고화질
+          </button>
+          <button
+            @click="videoQuality = '720p'"
+            :class="[
+              'flex-1 py-2 px-3 rounded-lg border-2 transition-all text-sm',
+              videoQuality === '720p'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                : 'border-gray-200 hover:border-gray-300 text-gray-600'
+            ]"
+          >
+            720p
+          </button>
+          <button
+            @click="videoQuality = '480p'"
+            :class="[
+              'flex-1 py-2 px-3 rounded-lg border-2 transition-all text-sm',
+              videoQuality === '480p'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                : 'border-gray-200 hover:border-gray-300 text-gray-600'
+            ]"
+          >
+            480p
+          </button>
+        </div>
+      </div>
+
+      <!-- Container Selection -->
+      <div>
+        <label class="block text-gray-700 mb-2 text-sm">파일 형식</label>
+        <div class="flex gap-2">
+          <button
+            @click="videoContainer = 'mp4'"
+            :class="[
+              'flex-1 py-2 px-3 rounded-lg border-2 transition-all text-sm',
+              videoContainer === 'mp4'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                : 'border-gray-200 hover:border-gray-300 text-gray-600'
+            ]"
+          >
+            MP4 <span class="text-xs text-gray-500">(권장)</span>
+          </button>
+          <button
+            @click="videoContainer = 'mkv'"
+            :class="[
+              'flex-1 py-2 px-3 rounded-lg border-2 transition-all text-sm',
+              videoContainer === 'mkv'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                : 'border-gray-200 hover:border-gray-300 text-gray-600'
+            ]"
+          >
+            MKV
+          </button>
+          <button
+            @click="videoContainer = 'webm'"
+            :class="[
+              'flex-1 py-2 px-3 rounded-lg border-2 transition-all text-sm',
+              videoContainer === 'webm'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                : 'border-gray-200 hover:border-gray-300 text-gray-600'
+            ]"
+          >
+            WebM
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audio Options -->
+    <div v-if="downloadFormat === 'audio'" class="mb-4">
+      <label class="block text-gray-700 mb-2 text-sm">오디오 포맷</label>
+      <div class="grid grid-cols-3 gap-2">
+        <button
+          @click="audioFormat = 'mp3'"
+          :class="[
+            'py-2 px-3 rounded-lg border-2 transition-all text-sm',
+            audioFormat === 'mp3'
+              ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+          ]"
+        >
+          MP3 <span class="text-xs text-gray-500">(권장)</span>
+        </button>
+        <button
+          @click="audioFormat = 'm4a'"
+          :class="[
+            'py-2 px-3 rounded-lg border-2 transition-all text-sm',
+            audioFormat === 'm4a'
+              ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+          ]"
+        >
+          M4A
+        </button>
+        <button
+          @click="audioFormat = 'aac'"
+          :class="[
+            'py-2 px-3 rounded-lg border-2 transition-all text-sm',
+            audioFormat === 'aac'
+              ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+          ]"
+        >
+          AAC
+        </button>
+        <button
+          @click="audioFormat = 'flac'"
+          :class="[
+            'py-2 px-3 rounded-lg border-2 transition-all text-sm',
+            audioFormat === 'flac'
+              ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+          ]"
+          title="무손실 고음질 (파일 크기 큼)"
+        >
+          FLAC
+        </button>
+        <button
+          @click="audioFormat = 'wav'"
+          :class="[
+            'py-2 px-3 rounded-lg border-2 transition-all text-sm',
+            audioFormat === 'wav'
+              ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+          ]"
+          title="무손실 원본 (파일 크기 매우 큼)"
+        >
+          WAV
         </button>
       </div>
     </div>
