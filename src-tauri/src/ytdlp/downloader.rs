@@ -217,13 +217,25 @@ impl Downloader {
             return Err(DownloaderError::BinaryNotFound);
         }
 
+        // Ensure output directory exists
+        let output_path = std::path::Path::new(&options.output_dir);
+        if !output_path.exists() {
+            std::fs::create_dir_all(output_path)?;
+        }
+
+        // Build output template with proper path separator
+        let output_template = output_path
+            .join("%(title)s.%(ext)s")
+            .to_string_lossy()
+            .to_string();
+
         let mut args = vec![
             "--progress".to_string(),
             "--newline".to_string(),
             "-f".to_string(),
             options.format.to_format_string().to_string(),
             "-o".to_string(),
-            format!("{}/%(title)s.%(ext)s", options.output_dir),
+            output_template,
         ];
 
         if options.extract_audio {
