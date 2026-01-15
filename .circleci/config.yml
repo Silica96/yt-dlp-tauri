@@ -122,6 +122,11 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Install Visual Studio Build Tools
+          command: |
+            choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart" -y
+          no_output_timeout: 30m
+      - run:
           name: Install Node.js
           command: |
             choco install nodejs --version=20.18.0 -y
@@ -132,8 +137,9 @@ jobs:
           name: Install Rust
           command: |
             Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
-            .\rustup-init.exe -y
+            .\rustup-init.exe -y --default-toolchain stable-msvc
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            rustup default stable-msvc
       - restore_cache:
           name: Restore npm cache
           keys:
