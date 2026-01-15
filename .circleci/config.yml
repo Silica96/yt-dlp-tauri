@@ -97,8 +97,10 @@ jobs:
       - run:
           name: Install Node.js
           command: |
-            choco install nodejs-lts -y
-            refreshenv
+            choco install nodejs --version=20.18.0 -y
+            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            node --version
+            npm --version
       - run:
           name: Install Rust
           command: |
@@ -107,13 +109,19 @@ jobs:
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
       - run:
           name: Install npm dependencies
-          command: npm ci
+          command: |
+            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            npm ci
       - run:
           name: Run tests
-          command: npm run test:run
+          command: |
+            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            npm run test:run
       - run:
           name: Build Tauri app
-          command: npm run tauri build
+          command: |
+            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            npm run tauri build
           no_output_timeout: 30m
       - store_artifacts:
           path: src-tauri/target/release/bundle/nsis
