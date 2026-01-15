@@ -122,24 +122,33 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Install Visual Studio Build Tools
+          name: Install Build Tools
           command: |
             choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart" -y
+            choco install mingw llvm -y
           no_output_timeout: 30m
       - run:
           name: Install Node.js
           command: |
             choco install nodejs --version=20.18.0 -y
-            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-            node --version
-            npm --version
       - run:
           name: Install Rust
           command: |
             Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
             .\rustup-init.exe -y --default-toolchain stable-msvc
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-            rustup default stable-msvc
+      - run:
+          name: Setup PATH
+          command: |
+            # Refresh PATH to include all installed tools
+            $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+            $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+            $newPath = "C:\Program Files\nodejs;C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;C:\Program Files\LLVM\bin;$env:USERPROFILE\.cargo\bin;$machinePath;$userPath"
+            [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+            # Verify tools
+            refreshenv
+            Write-Host "Node version:" (node --version)
+            Write-Host "Rust version:" (rustc --version)
+            Write-Host "dlltool location:" (Get-Command dlltool -ErrorAction SilentlyContinue).Source
       - restore_cache:
           name: Restore npm cache
           keys:
@@ -148,7 +157,7 @@ jobs:
       - run:
           name: Install npm dependencies
           command: |
-            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            $env:Path = "C:\Program Files\nodejs;C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;C:\Program Files\LLVM\bin;$env:USERPROFILE\.cargo\bin;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             npm ci
       - save_cache:
           name: Save npm cache
@@ -163,12 +172,12 @@ jobs:
       - run:
           name: Run tests
           command: |
-            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            $env:Path = "C:\Program Files\nodejs;C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;C:\Program Files\LLVM\bin;$env:USERPROFILE\.cargo\bin;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             npm run test:run
       - run:
           name: Build Tauri app
           command: |
-            $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            $env:Path = "C:\Program Files\nodejs;C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;C:\Program Files\LLVM\bin;$env:USERPROFILE\.cargo\bin;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             npm run tauri build
           no_output_timeout: 30m
       - save_cache:
