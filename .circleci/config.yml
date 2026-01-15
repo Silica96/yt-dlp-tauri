@@ -30,10 +30,28 @@ commands:
       target:
         type: string
         default: ""
+      cache-key-prefix:
+        type: string
+        default: "v1"
     steps:
+      - restore_cache:
+          name: Restore npm cache
+          keys:
+            - << parameters.cache-key-prefix >>-npm-{{ checksum "package-lock.json" }}
+            - << parameters.cache-key-prefix >>-npm-
       - run:
           name: Install npm dependencies
           command: npm ci
+      - save_cache:
+          name: Save npm cache
+          key: << parameters.cache-key-prefix >>-npm-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+      - restore_cache:
+          name: Restore Cargo cache
+          keys:
+            - << parameters.cache-key-prefix >>-cargo-<< parameters.target >>-{{ checksum "src-tauri/Cargo.lock" }}
+            - << parameters.cache-key-prefix >>-cargo-<< parameters.target >>-
       - run:
           name: Run tests
           command: npm run test:run
@@ -46,6 +64,13 @@ commands:
               npm run tauri build
             fi
           no_output_timeout: 30m
+      - save_cache:
+          name: Save Cargo cache
+          key: << parameters.cache-key-prefix >>-cargo-<< parameters.target >>-{{ checksum "src-tauri/Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - src-tauri/target
 
 jobs:
   build-macos-arm64:
@@ -60,6 +85,7 @@ jobs:
           targets: "aarch64-apple-darwin"
       - build-tauri:
           target: "aarch64-apple-darwin"
+          cache-key-prefix: "v1-macos-arm64"
       - store_artifacts:
           path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg
           destination: macos-arm64
@@ -80,6 +106,7 @@ jobs:
           targets: "x86_64-apple-darwin"
       - build-tauri:
           target: "x86_64-apple-darwin"
+          cache-key-prefix: "v1-macos-x64"
       - store_artifacts:
           path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg
           destination: macos-x64
@@ -107,11 +134,26 @@ jobs:
             Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
             .\rustup-init.exe -y
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+      - restore_cache:
+          name: Restore npm cache
+          keys:
+            - v1-windows-npm-{{ checksum "package-lock.json" }}
+            - v1-windows-npm-
       - run:
           name: Install npm dependencies
           command: |
             $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             npm ci
+      - save_cache:
+          name: Save npm cache
+          key: v1-windows-npm-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+      - restore_cache:
+          name: Restore Cargo cache
+          keys:
+            - v1-windows-cargo-{{ checksum "src-tauri/Cargo.lock" }}
+            - v1-windows-cargo-
       - run:
           name: Run tests
           command: |
@@ -123,6 +165,13 @@ jobs:
             $env:Path = "C:\Program Files\nodejs;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             npm run tauri build
           no_output_timeout: 30m
+      - save_cache:
+          name: Save Cargo cache
+          key: v1-windows-cargo-{{ checksum "src-tauri/Cargo.lock" }}
+          paths:
+            - C:\Users\circleci\.cargo\registry
+            - C:\Users\circleci\.cargo\git
+            - src-tauri\target
       - store_artifacts:
           path: src-tauri/target/release/bundle/nsis
           destination: windows
