@@ -1,0 +1,180 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.2.0
+  rust: circleci/rust@1.6.1
+  windows: circleci/windows@5.0.0
+  macos: circleci/macos@2.5.1
+
+commands:
+  install-rust:
+    description: "Install Rust toolchain"
+    parameters:
+      targets:
+        type: string
+        default: ""
+    steps:
+      - run:
+          name: Install Rust
+          command: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> $BASH_ENV
+            source $BASH_ENV
+            if [ -n "<< parameters.targets >>" ]; then
+              rustup target add << parameters.targets >>
+            fi
+
+  build-tauri:
+    description: "Build Tauri application"
+    parameters:
+      target:
+        type: string
+        default: ""
+    steps:
+      - run:
+          name: Install npm dependencies
+          command: npm ci
+      - run:
+          name: Run tests
+          command: npm run test:run
+      - run:
+          name: Build Tauri app
+          command: |
+            if [ -n "<< parameters.target >>" ]; then
+              npm run tauri build -- --target << parameters.target >>
+            else
+              npm run tauri build
+            fi
+          no_output_timeout: 30m
+
+jobs:
+  build-macos-arm64:
+    macos:
+      xcode: "15.4.0"
+    resource_class: macos.m1.medium.gen1
+    steps:
+      - checkout
+      - node/install:
+          node-version: "20"
+      - install-rust:
+          targets: "aarch64-apple-darwin"
+      - build-tauri:
+          target: "aarch64-apple-darwin"
+      - store_artifacts:
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg
+          destination: macos-arm64
+      - persist_to_workspace:
+          root: src-tauri/target/aarch64-apple-darwin/release/bundle
+          paths:
+            - dmg/*.dmg
+
+  build-macos-x64:
+    macos:
+      xcode: "15.4.0"
+    resource_class: macos.m1.medium.gen1
+    steps:
+      - checkout
+      - node/install:
+          node-version: "20"
+      - install-rust:
+          targets: "x86_64-apple-darwin"
+      - build-tauri:
+          target: "x86_64-apple-darwin"
+      - store_artifacts:
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg
+          destination: macos-x64
+      - persist_to_workspace:
+          root: src-tauri/target/x86_64-apple-darwin/release/bundle
+          paths:
+            - dmg/*.dmg
+
+  build-windows:
+    executor:
+      name: windows/default
+      size: large
+    steps:
+      - checkout
+      - run:
+          name: Install Node.js
+          command: |
+            choco install nodejs-lts -y
+            refreshenv
+      - run:
+          name: Install Rust
+          command: |
+            Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+            .\rustup-init.exe -y
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+      - run:
+          name: Install npm dependencies
+          command: npm ci
+      - run:
+          name: Run tests
+          command: npm run test:run
+      - run:
+          name: Build Tauri app
+          command: npm run tauri build
+          no_output_timeout: 30m
+      - store_artifacts:
+          path: src-tauri/target/release/bundle/nsis
+          destination: windows
+      - persist_to_workspace:
+          root: src-tauri/target/release/bundle
+          paths:
+            - nsis/*.exe
+
+  create-release:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - attach_workspace:
+          at: artifacts
+      - run:
+          name: List artifacts
+          command: find artifacts -type f -name "*.exe" -o -name "*.dmg"
+      - run:
+          name: Create GitHub Release
+          command: |
+            if [ -n "$CIRCLE_TAG" ]; then
+              echo "Creating release for tag: $CIRCLE_TAG"
+              # Install GitHub CLI
+              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+              sudo apt update && sudo apt install gh -y
+
+              # Create release
+              gh release create "$CIRCLE_TAG" \
+                --repo "$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME" \
+                --title "$CIRCLE_TAG" \
+                --draft \
+                artifacts/**/*.exe \
+                artifacts/**/*.dmg
+            else
+              echo "No tag found, skipping release creation"
+            fi
+
+workflows:
+  build-and-release:
+    jobs:
+      - build-macos-arm64:
+          filters:
+            tags:
+              only: /^v.*/
+      - build-macos-x64:
+          filters:
+            tags:
+              only: /^v.*/
+      - build-windows:
+          filters:
+            tags:
+              only: /^v.*/
+      - create-release:
+          requires:
+            - build-macos-arm64
+            - build-macos-x64
+            - build-windows
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
